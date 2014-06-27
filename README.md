@@ -1,6 +1,6 @@
 caterpillar-lsi
 ===============
-Latent Semantic Index plugin for the Caterpillar index.
+Latent Semantic Index plugin for Caterpillar.
 
 License
 =======
