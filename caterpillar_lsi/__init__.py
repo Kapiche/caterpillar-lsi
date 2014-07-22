@@ -213,7 +213,7 @@ class LSIPlugin(AnalyticsPlugin):
         """
         Run the plugin, extracting ``num_features`` latent featues. If ``normalise_frequencies`` is True-like,
         frequencies will be normalised according to tf-idf before extracting features, which is generally recommended.
-        
+
         Additionally, if ``calculate_document_similarities`` is True-like, this plugin will generate an adjacency matrix
         containing similarities between all document pairs in the model, accessible via ``get_document_similarities``.
 
@@ -260,7 +260,7 @@ class LSIPlugin(AnalyticsPlugin):
             doc_index = DerivedIndex.create_from_composite_query([(doc_index, doc_query,)])
 
         if doc_index.get_frame_count() != 1:
-            raise Exception("Expected a single frame for comparison, got {}",format(doc_index.get_frame_count()))
+            raise Exception("Expected a single frame for comparison, got {}", format(doc_index.get_frame_count()))
 
         D, term_values, frame_ids = LSIPlugin._build_covariance_matrix(doc_index, self._term_values)
         results = self._model.compare_document(D.T[0], filter_docs=filter_docs)
