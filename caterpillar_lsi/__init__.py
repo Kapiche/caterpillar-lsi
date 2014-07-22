@@ -300,8 +300,8 @@ class LSIPlugin(AnalyticsPlugin):
         if hasattr(self, '_model') and self._model is not None:
             return LSIPluginInfo(self._model, self._frame_ids, self._term_values)
         info = self._index.get_plugin_data(self, LSIPlugin.INFO_CONTAINER)
-        return LSIPluginInfo(LSIModel.loads(info[LSIPlugin.INFO_MODEL]), json.loads(info[LSIPlugin.INFO_FRAMES]),
-                             json.loads(info[LSIPlugin.INFO_TERMS]))
+        return LSIPluginInfo(LSIModel.loads(json.loads(info[LSIPlugin.INFO_MODEL])),
+                             json.loads(info[LSIPlugin.INFO_FRAMES]), json.loads(info[LSIPlugin.INFO_TERMS]))
 
     @staticmethod
     def _build_covariance_matrix(index, row_terms=None):
