@@ -164,9 +164,11 @@ class LSIModel(object):
         return t_v * self.idfs
 
     class BadDocumentException(Exception):
+        """Incorrect document format/structure"""
         pass
 
     class EmptyDocumentException(Exception):
+        """Document has no values"""
         pass
 
 
@@ -221,7 +223,7 @@ class LSIPlugin(AnalyticsPlugin):
         # First build covariance matrix (frequency -- terms x frames)
         self._C, self._term_values, self._frame_ids = LSIPlugin._build_covariance_matrix(self._index)
 
-        num_rows, num_cols = self._C.shape
+        num_rows = self._C.shape[0]
         if num_features > num_rows:
             raise Exception("Number of features must be less than or equal to number of terms.")
 
@@ -252,7 +254,7 @@ class LSIPlugin(AnalyticsPlugin):
         if model_filter_query is not None:
             frame_ids = self._index.searcher().filter(model_filter_query)
             filter_docs = []
-            for i, f_id in enumerate(frame_ids):
+            for f_id in frame_ids:
                 filter_docs.append(self._frame_ids.index(f_id))
 
         # Filter doc_index
