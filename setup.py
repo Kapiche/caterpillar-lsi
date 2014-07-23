@@ -35,5 +35,6 @@ setup(
     cmdclass={'test': Tox},
     author='Kapiche,',
     author_email='contact@kapiche.com',
+    license='GNU Affero General Public License',
     description='LSI plugin for caterpillar text analytics engine.'
 )

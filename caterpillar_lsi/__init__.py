@@ -1,5 +1,6 @@
-# Copyright (C) 2012-2014 Kapiche
+# Copyright (C) Kapiche
 # Author: Kris Rogers <kris@kapiche.com>
+# License: GNU Affero General Public License
 """
 Caterpillar latent semantic indexing plugin.
 
@@ -10,9 +11,7 @@ frame.
 """
 from __future__ import division
 from collections import defaultdict
-import decimal
 import math
-import os
 import pickle
 
 import numpy
