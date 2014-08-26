@@ -2,7 +2,9 @@ caterpillar-lsi
 ===============
 Latent Semantic Indexing plugin for Caterpillar.
 
-**Warning** - This is a prototype implementation that is currently only compatible with Caterpillar commit a984bfd34fe666d2d77c2f8917ca580946cb509f 
+**Warning - This is a prototype implementation that is currently only compatible with Caterpillar commit a984bfd34fe666d2d77c2f8917ca580946cb509f**
+
+**Additionally, the API needs a significant overhaul for clarity and ease of use. Expect it to change.**
 
 Usage
 =====
