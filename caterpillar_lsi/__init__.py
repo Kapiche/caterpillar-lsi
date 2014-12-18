@@ -10,18 +10,16 @@ frame.
 
 """
 from __future__ import division
+
 from collections import defaultdict
 import math
 import pickle
 
-import numpy
-import scipy.linalg
-from scipy.spatial.distance import cosine
-import ujson as json
-
-from caterpillar.data.storage import ContainerNotFoundError
-from caterpillar.processing.index import DerivedIndex
 from caterpillar.processing.plugin import AnalyticsPlugin
+from caterpillar.storage import ContainerNotFoundError
+import numpy
+from scipy import linalg, spatial
+import ujson as json
 
 
 class LSIModel(object):
@@ -54,7 +52,7 @@ class LSIModel(object):
         # U - term x term_truncated matrix
         # S - feature x feature matrix
         # Vt - document_truncated x document matrix
-        U, s, Vt = scipy.linalg.svd(C, full_matrices=False)
+        U, s, Vt = linalg.svd(C, full_matrices=False)
 
         # Convert feature vector to diagonal matrix
         S = numpy.diag(s)
@@ -74,7 +72,7 @@ class LSIModel(object):
             for i in xrange(self.num_documents):
                 dfv = self.S_Vt_T[i]
                 for j in xrange(i, self.num_documents):
-                    distance = cosine(dfv, self.S_Vt_T[j])
+                    distance = spatial.distance.cosine(dfv, self.S_Vt_T[j])
                     similarity = 1 - distance
                     document_similarities[i][j] = document_similarities[j][i] = similarity
             self.document_similarities = [d.values() for d in document_similarities.itervalues()]
@@ -87,7 +85,7 @@ class LSIModel(object):
         term_frequencies -- A vector of term frequencies for the new document.
         filter_docs -- A list of document indices to consider when comparing. Defaults to None (all documents).
 
-        Returns a dict containing doc index -> similarity.
+        Returns a dict containing doc_id -> similarity.
 
         """
         if len(term_frequencies) != self.num_terms:
@@ -114,7 +112,7 @@ class LSIModel(object):
             if filter_docs and d_i not in filter_docs:
                 continue
             other_dfv = self.S_Vt_T[d_i]
-            distance = cosine(dfv, other_dfv)
+            distance = spatial.distance.cosine(dfv, other_dfv)
             similarity = 1 - distance
             similarities[d_i] = max(0, similarity)  # Prevent negative floating point errors
 
@@ -148,7 +146,7 @@ class LSIModel(object):
         # Multiply term frequency vector for new document by term weights in existing LSI model
         t_v = numpy.dot(t_v, self.U)
         # Multiply by S^-1 to project document into the lower-dimensional feature space
-        f_v = numpy.dot(t_v, scipy.linalg.inv(self.S))
+        f_v = numpy.dot(t_v, linalg.inv(self.S))
         # At this stage, f_v is equivalent to a new column in Vt
         # Multiply it by S to compute the documents feature vector for comparison
         return numpy.dot(f_v, self.S)
@@ -194,8 +192,8 @@ class LSIPlugin(AnalyticsPlugin):
     INFO_MODEL = 'info_model'
     INFO_TERMS = 'info_terms'
 
-    def __init__(self, index):
-        self._index = index
+    def __init__(self, reader):
+        self._reader = reader
         try:
             # Attempt to intialise this plugin from storage
             info = self.get_info()
@@ -205,26 +203,26 @@ class LSIPlugin(AnalyticsPlugin):
         except ContainerNotFoundError:
             # No pre-existing plugin results available
             self._model = None
-        super(LSIPlugin, self).__init__(index)
+        super(LSIPlugin, self).__init__(reader)
 
     def get_name(self):
         return LSIPlugin.NAME
 
     def run(self, num_features=300, normalise_frequencies=True, calculate_document_similarities=False):
         """
-        Run the plugin, extracting ``num_features`` latent featues. If ``normalise_frequencies`` is True-like,
+        Run the plugin, extracting ``num_features`` latent features. If ``normalise_frequencies`` is Truth-y,
         frequencies will be normalised according to tf-idf before extracting features, which is generally recommended.
 
-        Additionally, if ``calculate_document_similarities`` is True-like, this plugin will generate an adjacency matrix
+        Additionally, if ``calculate_document_similarities`` is Truth-y, this plugin will generate an adjacency matrix
         containing similarities between all document pairs in the model, accessible via ``get_document_similarities``.
 
         """
         # First build covariance matrix (frequency -- terms x frames)
-        self._C, self._term_values, self._frame_ids = LSIPlugin._build_covariance_matrix(self._index)
+        self._C, self._term_values, self._frame_ids = LSIPlugin._build_covariance_matrix(self._reader)
 
         num_rows = self._C.shape[0]
         if num_features > num_rows:
-            raise Exception("Number of features must be less than or equal to number of terms.")
+            raise RuntimeError("Number of features must be less than or equal to number of terms.")
 
         self._model = LSIModel(self._C, num_features, normalise_frequencies, calculate_document_similarities)
 
@@ -236,39 +234,43 @@ class LSIPlugin(AnalyticsPlugin):
             }
         }
 
-    def compare_document(self, doc_index, doc_query=None, model_filter_query=None):
+    def compare_index(self, reader, model_filter_query=None):
         """
-        Compare a document to all documents in the model generated by the running of this plugin. Expects a document
-        to be represented by a single frame. This means either providing a ``doc_index`` with only one frame or
-        specifying an appropriate ``doc_query`` to select a single frame from ``doc_index``.
+        Compare all the documents in ``index`` to all documents in the model generated by the running of this plugin.
+        A document is considered to be a frame on the index.
 
-        Additionally, specifying ``model_filter_query`` allows filtering the LSI model to compare against only a subset.
+        Specifying ``model_filter_query`` allows filtering of the LSI model to compare against only a subset.
+
+        This method returns a dict of similarities as follows:
+
+            {
+                frame_id: {
+                    doc_id: similarity
+                }
+            }
 
         """
         if self._model is None:
-            raise Exception('Cannot compare document before the plugin has been run.')
+            raise RuntimeError('Cannot compare document before the plugin has been run.')
 
         # Determine which docs to consider in the model
         filter_docs = None
         if model_filter_query is not None:
-            frame_ids = self._index.searcher().filter(model_filter_query)
+            frame_ids = self._reader.searcher().filter(model_filter_query)
             filter_docs = []
             for f_id in frame_ids:
                 filter_docs.append(self._frame_ids.index(f_id))
 
-        # Filter doc_index
-        if doc_query is not None:
-            doc_index = DerivedIndex.create_from_composite_query([(doc_index, doc_query,)])
-
-        if doc_index.get_frame_count() != 1:
-            raise Exception("Expected a single frame for comparison, got {}", format(doc_index.get_frame_count()))
-
-        D, term_values, frame_ids = LSIPlugin._build_covariance_matrix(doc_index, self._term_values)
-        results = self._model.compare_document(D.T[0], filter_docs=filter_docs)
-        for doc_index in results.keys():
-            f_id = self._frame_ids[doc_index]
-            results[f_id] = results.pop(doc_index)
-        return results
+        D, term_values, frame_ids = LSIPlugin._build_covariance_matrix(reader, self._term_values)
+        order = [f_id for f_id in reader.get_frame_ids()]
+        similarities = {frame_id: {} for frame_id in order}
+        for i, term_freqs in enumerate(D.T):
+            results = self._model.compare_document(term_freqs, filter_docs=filter_docs)
+            for doc_id in results.keys():
+                f_id = self._frame_ids[doc_id]
+                results[f_id] = results.pop(doc_id)
+            similarities[order[i]] = results
+        return similarities
 
     def get_document_similarities(self, order_frame_ids=None):
         """
@@ -280,7 +282,7 @@ class LSIPlugin(AnalyticsPlugin):
 
         """
         if not hasattr(self._model, 'document_similarities'):
-            raise Exception('Document similarities are only available if their calculation is enabled at runtime')
+            raise RuntimeError('Document similarities are only available if their calculation is enabled at runtime')
 
         if order_frame_ids is None:
             return (self._model.document_similarities, self._frame_ids)
@@ -298,7 +300,7 @@ class LSIPlugin(AnalyticsPlugin):
         """
         if hasattr(self, '_model') and self._model is not None:
             return LSIPluginInfo(self._model, self._frame_ids, self._term_values)
-        info = self._index.get_plugin_data(self, LSIPlugin.INFO_CONTAINER)
+        info = {k: v for k, v in self._reader.get_plugin_data(self, LSIPlugin.INFO_CONTAINER)}
         return LSIPluginInfo(LSIModel.loads(json.loads(info[LSIPlugin.INFO_MODEL])),
                              json.loads(info[LSIPlugin.INFO_FRAMES]), json.loads(info[LSIPlugin.INFO_TERMS]))
 
@@ -312,9 +314,9 @@ class LSIPlugin(AnalyticsPlugin):
         Returns a 3-tuple containing (covariance_matrix, term_values, frame_ids).
 
         """
-        positions = index.get_positions_index()
+        positions = {k: v for k, v in index.get_positions_index()}
         row_terms = row_terms or positions.keys()  # rows
-        frame_ids = index.get_frame_ids()  # columns
+        frame_ids = [f_id for f_id in index.get_frame_ids()]  # columns
         term_frame_frequencies = []  # values
         for term in row_terms:
             frame_positions = positions.get(term, {})
