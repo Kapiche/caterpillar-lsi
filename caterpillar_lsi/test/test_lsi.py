@@ -40,10 +40,16 @@ def test_lsi_similarity():
     with pytest.raises(LSIModel.BadDocumentException):
         # Document's term frequency vector doesn't match model length
         model.compare_document([1])
+    with pytest.raises(LSIModel.BadDocumentException):
+        # Document's term frequency vector doesn't match model length
+        model.classify_document([1])
 
     with pytest.raises(LSIModel.EmptyDocumentException):
         # Document's term frequency vector is empty
         model.compare_document([0, 0, 0, 0])
+    with pytest.raises(LSIModel.EmptyDocumentException):
+        # Document's term frequency vector is empty
+        model.classify_document([0, 0, 0, 0])
 
 
 def test_lsi_plugin(index_dir):
@@ -65,7 +71,11 @@ def test_lsi_plugin(index_dir):
     with IndexReader(index_dir) as reader:
         with pytest.raises(RuntimeError):
             # Plugin not yet run
-            LSIPlugin(reader).compare_index(reader, QueryStringQuery("id=doc-{}".format(doc_ids[0])))
+            LSIPlugin(reader).compare_index_with_model(reader, QueryStringQuery("id=doc-{}".format(doc_ids[0])))
+    with IndexReader(index_dir) as reader:
+        with pytest.raises(RuntimeError):
+            # Plugin not yet run
+            LSIPlugin(reader).compare_index_using_model(reader)
 
     with IndexWriter(index_dir) as writer:
         writer.run_plugin(LSIPlugin, normalise_frequencies=True, calculate_document_similarities=False)
@@ -90,7 +100,7 @@ def test_lsi_plugin(index_dir):
                 assert numpy.isclose(fv[fv_i], info.model.S_Vt_T[d_i][fv_i])
 
         # Verify documents match each other exactly
-        r = lsi_plugin.compare_index(reader)
+        r = lsi_plugin.compare_index_with_model(reader)
         for d_id in r.keys():
             assert_almost_equal(r[d_id][d_id], 1)
         similarities, sim_frame_ids = lsi_plugin.get_document_similarities()
@@ -99,7 +109,7 @@ def test_lsi_plugin(index_dir):
 
         # Check compare document with model filter
         q = QueryStringQuery('environment')
-        r = LSIPlugin(reader).compare_index(reader, q)
+        r = LSIPlugin(reader).compare_index_with_model(reader, q)
         count = reader.searcher().count(q)
         for d_id in r.keys():
             assert len(r[d_id]) == count
@@ -109,6 +119,11 @@ def test_lsi_plugin(index_dir):
         f_ids.reverse()
         assert lsi_plugin.get_document_similarities(f_ids)[1] == f_ids
         num_features = reader.get_vocab_size() + 1
+
+        # Classify text with the model
+        sims = LSIPlugin(reader).compare_index_using_model(reader)
+        for f_id in sims.keys():
+            assert_almost_equal(sims[f_id][f_id], 1)  # Documents should have a similarity of 1 with themselves
 
     with IndexWriter(index_dir) as writer:
         with pytest.raises(RuntimeError):
