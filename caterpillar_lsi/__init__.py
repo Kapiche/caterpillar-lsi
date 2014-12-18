@@ -251,7 +251,7 @@ class LSIPlugin(AnalyticsPlugin):
 
         """
         if self._model is None:
-            raise RuntimeError('Cannot compare document before the plugin has been run.')
+            raise RuntimeError('Cannot compare index with model before the plugin has been run.')
 
         # Determine which docs to consider in the model
         filter_docs = None
